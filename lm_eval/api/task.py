@@ -1483,6 +1483,7 @@ class ConfigurableTask(Task):
                     if "brier_score" in use_metric
                     else {}
                 ),
+                **({"llkh_cc": lls[gold]} if "llkh_cc" in use_metric else {}),
             }
 
             if "acc_mutual_info" in use_metric:
