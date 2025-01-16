@@ -14,3 +14,7 @@ metric_list:
   - metric: acc_norm
     aggregation: mean
     higher_is_better: true
+  - metric: llkh_cc
+    aggregation: mean
+    higher_is_better: true
+  - metric: brier_score
