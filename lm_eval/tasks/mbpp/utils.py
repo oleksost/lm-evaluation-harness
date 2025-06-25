@@ -1,7 +1,5 @@
-import re
-from typing import Union
-
 import evaluate as hf_evaluate
+import re
 
 
 try:
@@ -15,37 +13,115 @@ except Exception as e:
     raise e
 
 
-def pass_at_1(
-    references: Union[str, list[str]], predictions: Union[str, list[list[str]]]
-) -> float:
-    if isinstance(references, str):
-        references = [references]
-    if isinstance(predictions[0], str):
-        predictions = [[p] for p in predictions]
+def extract_code(text):
+    """
+    Extract code from various formats, including nested code blocks within special tags.
+    
+    Args:
+        text (str): The input text containing code in one of several formats
+        
+    Returns:
+        str: The extracted code or the original text if no pattern matches
+    """
+    code_blocks = []
+    
+    python_matches = re.finditer(r'```python(.*?)(?:```|$)', text, re.DOTALL)
+    for match in python_matches:
+        code_blocks.append(match.group(1).strip())
+    
+    if not code_blocks:
+        code_matches = re.finditer(r'```(?!python)(.*?)(?:```|$)', text, re.DOTALL)
+        for match in code_matches:
+            code_blocks.append(match.group(1).strip())
+    
+    if code_blocks:
+        return "\n\n".join(code_blocks)
+    
+    
+    # Check for [BEGIN FINAL RESPONSE]...[END FINAL RESPONSE]
+    begin_end_match = re.search(r'\[BEGIN FINAL RESPONSE\](.*?)(?:\[END FINAL RESPONSE\]|$)', text, re.DOTALL)
+    if begin_end_match:
+        content = begin_end_match.group(1).strip()
+        nested_python = re.finditer(r'```python(.*?)(?:```|$)', content, re.DOTALL)
+        nested_code_blocks = [match.group(1).strip() for match in nested_python]
+        
+        if not nested_code_blocks:
+            nested_code = re.finditer(r'```(?!python)(.*?)(?:```|$)', content, re.DOTALL)
+            nested_code_blocks = [match.group(1).strip() for match in nested_code]
+        
+        if nested_code_blocks:
+            return "\n\n".join(nested_code_blocks)
+        return content
+    
+    # Check for <|begin_of_solution|>...<|end_of_solution|>
+    solution_match = re.search(r'<\|begin_of_solution\|>(.*?)(?:<\|end_of_solution\|>|$)', text, re.DOTALL)
+    if solution_match:
+        content = solution_match.group(1).strip()
+        # Look for code blocks within this content
+        nested_python = re.finditer(r'```python(.*?)(?:```|$)', content, re.DOTALL)
+        nested_code_blocks = [match.group(1).strip() for match in nested_python]
+        
+        if not nested_code_blocks:
+            nested_code = re.finditer(r'```(?!python)(.*?)(?:```|$)', content, re.DOTALL)
+            nested_code_blocks = [match.group(1).strip() for match in nested_code]
+        
+        if nested_code_blocks:
+            return "\n\n".join(nested_code_blocks)
+        return content
+    
+    # Check for content after </think> tags
+    think_match = re.search(r'</think>(.*?)$', text, re.DOTALL)
+    if think_match:
+        content = think_match.group(1).strip()
+        nested_python = re.finditer(r'```python(.*?)(?:```|$)', content, re.DOTALL)
+        nested_code_blocks = [match.group(1).strip() for match in nested_python]
+        
+        if not nested_code_blocks:
+            nested_code = re.finditer(r'```(?!python)(.*?)(?:```|$)', content, re.DOTALL)
+            nested_code_blocks = [match.group(1).strip() for match in nested_code]
+        
+        if nested_code_blocks:
+            return "\n\n".join(nested_code_blocks)
+        return content
+    
+    # Check for content after </reasoning> tags (new addition)
+    reasoning_match = re.search(r'</reasoning>(.*?)$', text, re.DOTALL)
+    if reasoning_match:
+        content = reasoning_match.group(1).strip()
+        # Look for code blocks within this content
+        nested_python = re.finditer(r'```python(.*?)(?:```|$)', content, re.DOTALL)
+        nested_code_blocks = [match.group(1).strip() for match in nested_python]
+        
+        if not nested_code_blocks:
+            nested_code = re.finditer(r'```(?!python)(.*?)(?:```|$)', content, re.DOTALL)
+            nested_code_blocks = [match.group(1).strip() for match in nested_code]
+        
+        if nested_code_blocks:
+            return "\n\n".join(nested_code_blocks)
+        return content
+    
+    # No pattern matched, return original text
+    return text
+import re
+
+
+
+def process_reka(text):
+    if " <sep> human:" in text:
+        text = text.replace(" <sep> human:", "").strip()
+        return text
+    return text
+
+def pass_at_1(references, predictions):
+    # predictions = [extract_code(pred) for pred in predictions]
+    # print("Predictions, ", predictions)
+    predictions = [extract_code(pred) for pred in predictions]
+    predictions = [process_reka(pred) for pred in predictions]
     return pass_at_k.compute(
         references=references,
-        predictions=predictions,
+        predictions=[predictions],
         k=[1],
     )[0]["pass@1"]
-
-
-def extract_code_blocks(text: str) -> str:
-    # Pattern to match ```...``` blocks
-    pattern = r"```(?:\w+)?\n?(.*?)\n?```"
-    # (+ ```) as we add the opening "```python" to the gen_prefix
-    matches = re.findall(pattern, r"```" + text, re.DOTALL)
-    # if no matches, try to match ```...``` blocks (after removing the language)
-    if not matches:
-        text_without_lang = re.sub(r"```python", "```", text)
-        matches = re.findall(pattern, text_without_lang, re.DOTALL)
-    if not matches:
-        return ""
-    else:
-        return matches[0]
-
-
-def build_predictions(resps: list[list[str]], docs: list[dict]) -> list[list[str]]:
-    return [[extract_code_blocks(r) for r in resp] for resp in resps]
 
 
 def list_fewshot_samples():
