@@ -1,4 +1,5 @@
 import dataclasses
+import re
 from typing import Dict, Optional, Union
 
 from lm_eval.tasks.ifeval import instructions_registry
@@ -21,11 +22,34 @@ class OutputExample:
     follow_instruction_list: list[bool]
 
 
+def extract_final_response(text):
+    """
+    Extract content from [BEGIN FINAL RESPONSE]...[END FINAL RESPONSE] tags.
+    
+    Args:
+        text (str): The input text containing the response
+        
+    Returns:
+        str: The extracted content or the original text if no pattern matches
+    """
+    # Check for [BEGIN FINAL RESPONSE]...[END FINAL RESPONSE]
+    begin_end_match = re.search(r'\[BEGIN FINAL RESPONSE\](.*?)(?:\[END FINAL RESPONSE\]|$)', text, re.DOTALL)
+    if begin_end_match:
+        content = begin_end_match.group(1).strip()
+        return content
+    
+    # No pattern matched, return original text
+    return text
+
+
 def test_instruction_following_strict(
     inp,
     response,
 ):
     """Tests response to see if instructions are followed."""
+    # Extract content from [BEGIN FINAL RESPONSE]...[END FINAL RESPONSE] tags
+    response = extract_final_response(response)
+    
     instruction_list = inp.instruction_id_list
     is_following_list = []
 
@@ -59,6 +83,9 @@ def test_instruction_following_loose(
     response,
 ):
     """Tests response for an upper bound for following instructions."""
+    # Extract content from [BEGIN FINAL RESPONSE]...[END FINAL RESPONSE] tags
+    response = extract_final_response(response)
+    
     r = response.split("\n")
     response_remove_first = "\n".join(r[1:]).strip()
     response_remove_last = "\n".join(r[:-1]).strip()
